@@ -22,7 +22,17 @@ contracts, house rules, architecture, and JGen blueprint guidance.
 
 ## Install
 
+### Claude desktop (Cowork)
+
+1. Open **Customize → Plugins**.
+2. Choose **Add → Add marketplace** and enter `ajapros/chenile-claude-plugins`.
+3. Install **chenile**.
+
+Use **Check for updates** on the marketplace to get new versions.
+
 ### Claude Code
+
+`/plugin` is a Claude Code command; it isn't available in the desktop app's chat.
 
 ```text
 /plugin marketplace add ajapros/chenile-claude-plugins
@@ -51,7 +61,7 @@ marketplace and installed plugin, run:
 codex plugin marketplace upgrade chenile-plugins
 ```
 
-### claude.ai and Claude desktop
+### claude.ai (web), as individual skills
 
 1. Download the skill zips from the latest release, or build them with `scripts/package-skills.sh`.
 2. Upload each one under **Settings → Capabilities → Skills**.
