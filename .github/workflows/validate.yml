@@ -1,0 +1,26 @@
+# Validates the marketplace and the skills on every push and pull request.
+name: Validate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check skills (frontmatter, no local references)
+        run: python3 scripts/check-skills.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate marketplace and plugin with Claude Code
+        run: npx -y @anthropic-ai/claude-code plugin validate .

@@ -1,0 +1,39 @@
+{
+  "name": "chenile-plugins",
+  "description": "Claude plugins for the Chenile microservices framework (chenile.org) and its code generator JGen",
+  "owner": {
+    "name": "Chenile"
+  },
+  "plugins": [
+    {
+      "name": "chenile",
+      "source": "./plugins/chenile",
+      "description": "Skills for building with Chenile: framework knowledge and house rules, JGen blueprints, architecture, process management, and query/workflow runtime",
+      "relevance": {
+        "topic": "Chenile",
+        "signals": {
+          "manifestDeps": [
+            {
+              "file": "[/\\\\]pom\\.xml$",
+              "pattern": "<groupId>org\\.chenile(\\.[a-z]+)?</groupId>"
+            },
+            {
+              "file": "[/\\\\]build\\.gradle(\\.kts)?$",
+              "pattern": "org\\.chenile"
+            }
+          ],
+          "filesRead": [
+            "**/.jgen/generation.json",
+            "**/META-INF/blueprint.json",
+            "**/.chenilegen.json"
+          ],
+          "cli": [
+            "jgen",
+            "jgen.sh",
+            "stm-cli"
+          ]
+        }
+      }
+    }
+  ]
+}

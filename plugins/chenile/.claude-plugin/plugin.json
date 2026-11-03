@@ -1,0 +1,13 @@
+{
+  "name": "chenile",
+  "version": "1.0.0",
+  "description": "Skills for building with Chenile (chenile.org): framework knowledge and house rules, JGen code generation, architecture internals, process management, and the query/workflow runtime",
+  "author": {
+    "name": "Raja Shankar Kolluru",
+    "url": "https://chenile.org"
+  },
+  "homepage": "https://chenile.org",
+  "repository": "https://github.com/ajapros/chenile-claude-plugins",
+  "license": "MIT",
+  "keywords": ["chenile", "java", "spring-boot", "microservices", "jgen", "code-generation", "state-machine", "finito"]
+}
