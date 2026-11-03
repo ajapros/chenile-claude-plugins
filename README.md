@@ -1,8 +1,8 @@
-# Chenile plugins for Claude
+# Chenile skills for Claude and Codex
 
-Claude skills for building with [Chenile](https://chenile.org), the Java / Spring Boot microservices framework, and
-its code generator [JGen](https://jgen.chenile.org). With the plugin installed, Claude knows Chenile's
-contracts, follows its house rules, and uses JGen blueprints instead of improvising.
+Agent skills for building with [Chenile](https://chenile.org), the Java / Spring Boot microservices framework, and
+its code generator [JGen](https://jgen.chenile.org). Install the plugin in Claude or Codex to load Chenile's
+contracts, house rules, architecture, and JGen blueprint guidance.
 
 | Skill | Use it for |
 | --- | --- |
@@ -35,6 +35,22 @@ them on its own when your work matches.
 
 To get updates, run `/plugin marketplace update chenile-plugins`.
 
+### Codex
+
+Add the Chenile marketplace and install its plugin:
+
+```text
+codex plugin marketplace add ajapros/chenile-claude-plugins
+codex plugin add chenile@chenile-plugins
+```
+
+The plugin loads the same canonical skill files used by Claude. To update the
+marketplace and installed plugin, run:
+
+```text
+codex plugin marketplace upgrade chenile-plugins
+```
+
 ### claude.ai and Claude desktop
 
 1. Download the skill zips from the latest release, or build them with `scripts/package-skills.sh`.
@@ -66,8 +82,10 @@ in managed settings:
 ```text
 .claude-plugin/marketplace.json           the marketplace: one plugin, "chenile", with relevance signals
 plugins/chenile/.claude-plugin/plugin.json   (and icon.png, the Chenile mark)
+plugins/chenile/.codex-plugin/plugin.json   Codex manifest; points at the same skill directory
+.agents/plugins/marketplace.json           Codex marketplace entry for the Chenile plugin
 plugins/chenile/skills/<skill>/SKILL.md   the skills
-scripts/check-skills.py                   frontmatter checks; refuses local paths and maintainer-only notes
+scripts/check-skills.py                   skill frontmatter and Claude/Codex metadata checks
 scripts/package-skills.sh                 one zip per skill, for claude.ai
 .github/workflows/validate.yml            runs both checks plus `claude plugin validate`
 ```
@@ -76,7 +94,7 @@ scripts/package-skills.sh                 one zip per skill, for claude.ai
 
 - Change a skill under `plugins/chenile/skills/`.
 - Run `python3 scripts/check-skills.py` and `claude plugin validate .`.
-- Bump `version` in `plugins/chenile/.claude-plugin/plugin.json`, so that installed copies update.
+- Bump `version` in both Claude and Codex plugin manifests together, so installed copies update consistently.
 - Open a pull request.
 
 Skills must not contain machine-specific paths or maintainer-only workflows; the check script enforces this.

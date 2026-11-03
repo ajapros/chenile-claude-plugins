@@ -1,0 +1,22 @@
+{
+  "name": "chenile-plugins",
+  "interface": {
+    "displayName": "Chenile Plugins"
+  },
+  "plugins": [
+    {
+      "name": "chenile",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ajapros/chenile-claude-plugins.git",
+        "path": "./plugins/chenile",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

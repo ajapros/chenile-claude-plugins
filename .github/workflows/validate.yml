@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Check skills (frontmatter, no local references)
+      - name: Check skills and Claude/Codex plugin metadata
         run: python3 scripts/check-skills.py
       - uses: actions/setup-node@v4
         with:
