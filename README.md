@@ -18,7 +18,11 @@ contracts, house rules, architecture, and JGen blueprint guidance.
 - import classes instead of writing fully qualified names;
 - create beans in `@Configuration` classes with `@Bean` methods, not with `@Component`;
 - split complex services into `-api` and `-service` modules;
-- look at the JGen blueprints for patterns first.
+- look at the JGen blueprints for patterns first;
+- don't create a helper class for a method only one class uses: fold it into that class;
+- avoid static methods, except in general-purpose utilities such as `trim()` or `isBlank()`;
+- ask before adding extra layers of abstraction;
+- in a framework module `x`, put `@Configuration` classes in `org.chenile.configuration.x` and core classes in `org.chenile.x`.
 
 ## Install
 

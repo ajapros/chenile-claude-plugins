@@ -154,7 +154,7 @@ Inputs:
 |---|---|
 | `application`, `applicationVersion`, `destFolder` | the project |
 | `processSpec` | FILE, native processMap |
-| `cronSpec` | optional FILE of cron schedules |
+| `scheduleSpec` | optional FILE of schedules (renamed from `cronSpec` in the next JGen; generated projects then need Chenile 2.1.36 and seed chenile-scheduler-db) |
 | `definitionSource` | `json` or `database` |
 | `registryMode` | `create` or `existing`; `existingRegistryUrl` when `existing` |
 | `registryPlacement` | `server` (recommended) or `separate`; only when `create` |

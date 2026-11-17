@@ -10,10 +10,10 @@ description: "How the Chenile framework is built: the 11 repositories and their 
 1. **Build baseline**
    - `chenile-parent`: Maven super-parent and dependency BOM. It defines the Java and Spring Boot versions and every Chenile artifact version.
 2. **Core runtime**
-   - `chenile-core`. Modules: stm, chenile-base, owiz, chenile-core, chenile-http, cucumber-utils, utils, jpa-utils, multi-datasource-utils, chenile-mcp, chenile-admin-ui.
+   - `chenile-core`. Modules: stm, chenile-base, owiz, chenile-core, chenile-trigger (2.1.36), chenile-http, cucumber-utils, utils, jpa-utils, multi-datasource-utils, chenile-mcp, chenile-admin-ui.
 3. **Application blueprints**
    - `chenile-query-workflow-blueprints`. Modules: query-api, chenile-query-service, chenile-query-controller, query-mcp, workflow-api, workflow-service, workflow-info, workflow-mcp, workflow-utils, cucumber-workflow-utils, stm-generate-puml.
-   - `chenile-process-management`. Modules: process-api, chenile-outbox, trigger-api, trigger-service, crontab-api, crontab-service, process-service, process-delegate, the jdbc/q-based/invm starters, process-admin-server, process-ui (see the chenile-process-management skill).
+   - `chenile-process-management`. Modules: process-api, chenile-outbox, trigger-service, process-service, process-delegate, the jdbc/q-based/invm starters, process-admin-server, process-ui (see the chenile-process-management skill).
 4. **Integration**
    - `chenile-service-registry`
    - `chenile-proxies`
@@ -21,7 +21,7 @@ description: "How the Chenile framework is built: the 11 repositories and their 
    - `chenile-messaging`: pub-sub, mqtt, kafka, azure, jvm-pub-sub, cloud-edge-switch.
 5. **Support**
    - `chenile-bdd`: it-cucumber-utils, it-cucumber-sec-utils.
-   - `chenile-others`: filewatch, scheduler, cache, config-maven-plugin.
+   - `chenile-others`: filewatch, scheduler, scheduler-db (2.1.36), cache, config-maven-plugin.
    - `cconfig`: chenile-config, cconfig-db.
 
 Size (2026-10-03): about 33.1K lines of production Java and 20.8K lines of tests, in 74 Maven modules. chenile-core holds about 39% of the production code. There are 791 framework tests.
@@ -29,6 +29,19 @@ Size (2026-10-03): about 33.1K lines of production Java and 20.8K lines of tests
 Query and workflow blueprints build **on** the core; they don't duplicate it. Integration repos are small because they plug into the same pipeline.
 
 ## Runtime: one pipeline for every entry point
+
+**Events (2.1.36).** Other than HTTP (and proxies/MCP, which call operations), Chenile treats everything as an
+event. A Chenile event is internal (event id, payload, x- headers); external happenings are mapped onto it: a cron
+schedule (chenile-scheduler / chenile-scheduler-db, the schedule's `eventId`), a file landing in a watched folder
+(chenile-filewatch, `eventId` defaulting to `fileWatchId`, one per record), a message on a topic (chenile-messaging;
+`chenile.kafka.consumer.topic-bindings`, default event id = topic), `POST /trigger` or code. Operations subscribe
+with `@EventsSubscribedTo` or JSON `eventSubscribedTo`; `EventProcessor.handleEvent` builds one exchange per
+subscriber. The internal sources raise events through `TriggerService` (chenile-core `chenile-trigger`):
+`DirectTriggerService` by default (in memory, synchronous, restores the caller's `ContextContainer`), or process
+management's durable outbox-backed `EventTriggerService`. Idempotency keys: `schedule:<id>:<scheduledFireTime>`,
+`file:<fileWatchId>:<file>:<sha256>:<recordIndex>`. Standard headers in `TriggerHeaders`
+(`x-chenile-event-source`, `x-chenile-trigger-id`, schedule and file headers). Messaging raises events directly
+(the broker retries/dead-letters). Concept page: chenile.org/concepts/17-events/.
 
 HTTP, events, proxies, scheduler, file-watch and MCP all create a **`ChenileExchange`** and run it through `ChenileEntryPoint`, which executes the Owiz flow `chenile-highway`. That flow is defined in `chenile-core/src/main/resources/org/chenile/core/chenile-core.xml` and loaded via `chenile.interceptors.path`.
 

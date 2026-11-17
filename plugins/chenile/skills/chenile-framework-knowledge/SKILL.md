@@ -1,6 +1,6 @@
 ---
 name: "chenile-framework-knowledge"
-description: "Reference knowledge of the Chenile Java/Spring microservices framework (chenile.org) and the Chenile house rules for writing Chenile code (cucumber tests always, reuse existing utilities, imports not FQCNs, @Configuration/@Bean instead of @Component, -api/-service split, follow JGen blueprint patterns). Covers concepts, exact REST/response contracts, headers, workflow (Finito STM) and query APIs, security, messaging, cconfig, registry/proxies, admin endpoints, service selection, and releases through 2.1.35 (2.1.36 in development). Use when writing or reviewing Chenile code, building a UI, client or integration against Chenile services, or explaining Chenile."
+description: "Reference knowledge of the Chenile Java/Spring microservices framework (chenile.org) and the Chenile house rules for writing Chenile code (cucumber tests always, reuse existing utilities, imports not FQCNs, @Configuration/@Bean instead of @Component, -api/-service split, follow JGen blueprint patterns, no single-use helper classes, avoid static methods, ask before adding abstraction layers, org.chenile.configuration.x for configuration and org.chenile.x for core classes). Covers concepts, exact REST/response contracts, headers, workflow (Finito STM) and query APIs, security, messaging, cconfig, registry/proxies, admin endpoints, service selection, and releases through 2.1.35 (2.1.36 in development). Use when writing or reviewing Chenile code, building a UI, client or integration against Chenile services, or explaining Chenile."
 ---
 
 
@@ -94,12 +94,23 @@ Related skills:
    | A non-HTTP service | `bp-headless-service` |
 
    Mirror their package layout (`configuration`, `configuration/controller`, `service/impl`, `service/errorcodes`, `service/healthcheck`, `bdd`) and naming. The chenile-jgen skill describes every blueprint.
+7. **No single-use helper classes.** Don't create a utility class (`XxxEvents`, `XxxHelper`, `XxxUtils`) to hold a method that only one class calls. Put it in that class as a private method or a private nested class. Test it through the owning class's behaviour, not separately.
+   - A shared class is justified only when two or more classes really call it **and** keeping their copies identical matters (for example tenant or header security rules). A few lines that two classes happen to repeat are not a reason on their own.
+   - Rule 2 still applies: reuse what the framework already has. This rule is about not *inventing* new helper classes.
+   - **Avoid static methods.** Use instance methods, and give the class that needs them an instance (a field, a constructor argument or a `@Bean`). Statics are fine only in a typical general-purpose utility class, the `trim()` / `isBlank()` kind, and for constants. Domain rules, validation and anything with behaviour worth substituting in a test are instance methods, even when the class is stateless.
+8. **Ask before adding layers of abstraction.** Before you introduce an extra interface, base class, SPI, factory, registry or delegating wrapper beyond what the task needs, describe the layer and why, and ask the user first. Default to the most direct design: one interface with its implementations, logic in the class that uses it. Many layers that each just forward a call are a design smell here.
+9. **Package layout for framework modules.** For a framework module `x`:
+   - `org.chenile.configuration.x` holds its `@Configuration` classes (and controllers under `.controller`);
+   - `org.chenile.x` holds its core classes (services, models, jobs, error codes).
+
+   For a two-part name such as `scheduler-db`, use `org.chenile.configuration.scheduler.db` and `org.chenile.scheduler.db`. An application then needs to scan only `org.chenile.configuration` (`@SpringBootApplication(scanBasePackages = "org.chenile.configuration")`), and the core packages are never component-scanned. An auto-configuration also goes under `org.chenile.configuration.x`: list it in `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`, and `@SpringBootApplication`'s scan skips it, so its conditions still run after the application's beans.
 
 ## 1. Model
 
 - **Module split:** services are split into `xxx-api` (interface and model, which consumers depend on) and `xxx-service` (the implementation, which nobody depends on).
 - **Hosting:** services are hosted by a mini-monolith deployable on port 8080.
 - **One pipeline for every entry point.** HTTP, events, proxies, the scheduler, file-watch and MCP all become a `ChenileExchange`. It runs the same interceptor pipeline, then the pure implementation, and returns back out through the pipeline.
+- **Everything but HTTP is an event (2.1.36).** A Chenile event is internal: an event id, a payload and x- headers. External happenings map onto it by configuration: a cron schedule (`chenile-scheduler`: one `SchedulerDefinition` from JSON via `chenile.scheduler.json.package`, code via `chenileScheduler.schedule(def)`, or the database via `chenile-scheduler-db`'s `/schedule` API), a file in a watched folder (`chenile-filewatch`, `eventId` defaults to `fileWatchId`, one event per record), a message on a topic (`chenile.kafka.consumer.topic-bindings`, default event id = topic), `POST /trigger`, or code (`TriggerService.trigger(TriggerInput)`). Operations subscribe with `@EventsSubscribedTo("x")` on the controller method or `"eventSubscribedTo": ["x"]` in JSON; payloads are converted to the body type by the transformer. Internal sources go through chenile-core's `chenile-trigger` `TriggerService`: `DirectTriggerService` by default (in memory; dedupe `chenile.trigger.dedupe.retention` PT24H, `max-entries` 100000) or process management's durable `EventTriggerService`. Standard headers (`TriggerHeaders`): `x-chenile-event-source` (CRON/FILE/API/EXTERNAL), `x-chenile-trigger-id`, `x-chenile-tenant-id`, `x-chenile-schedule-id`, `x-chenile-scheduled-fire-time`, `x-chenile-fire-time`, `x-chenile-file-watch-id`, `x-chenile-file-name`, `x-chenile-record-index`. Concept: chenile.org/concepts/17-events/; reference: /developer/entry-points/.
 - **Controllers:** HTTP controllers carry `@ChenileController(value="<svc>Service", serviceName="_<svc>Service_", healthCheckerName=…)`, extend `ControllerSupport`, and call `process([op,] request, args…)`.
 - **Per-request implementation choice (2.1.35):** `@ChenileController(serviceSelector="<bean>")` lets a `ServiceSelector` bean pick the implementation bean **per request**; `null` falls back to `serviceName`. Precedence: mock, then trajectory, then selector, then default. Details in the chenile-architecture skill.
 - **Pipeline order** (`chenile-core.xml`):
@@ -232,8 +243,8 @@ UI: build grids and filters from `columnMetadata`; put row actions from `allowed
 - **Admin API:** `/process-management/api/*`.
   - Plain DTOs, not `GenericResponse`.
   - Headers `X-Process-Management-Key` (at least 32 characters) and `x-chenile-tenant-id`.
-  - Endpoints: info, crontabs, triggers, executions, definitions (+refresh), processes, trace.
-- **React dashboard:** `process-ui`, with a Quartz cron-expression builder in the crontab form.
+  - Endpoints: info, schedules (2.1.36; was crontabs), triggers, executions (filter `scheduleId`), definitions (+refresh), processes, trace.
+- **React dashboard:** `process-ui`, with a Schedules tab and a Quartz cron-expression builder.
 - **Typed work listeners (2.1.35):** `ExecutorWorkListener` / `SplitterWorkListener` / `AggregatorWorkListener`, routed by `serviceSelector`.
 
 ## 9. Governance features
@@ -286,6 +297,7 @@ UI: build grids and filters from `columnMetadata`; put row actions from `allowed
 - **2.1.36 (in development):**
   - stm-cli moved out of workflow-utils into `ajapros/stm-cli`; `CLIHelper`/`CLIParams` stay.
   - JGen work since 2.1.35 ships as JGen 2.5.1.
+  - **Unified event model:** new `chenile-trigger` (chenile-core); `chenile-scheduler` rebuilt on `SchedulerDefinition` + `ChenileScheduler` (launchers, `SchedulerInfo`, execution store removed; clustered Spring Boot Quartz); new `chenile-scheduler-db`; `chenile-filewatch` fires through `TriggerService`; process management drops `trigger-api`, `crontab-api`, `crontab-service` (admin API `/schedules`). ADR: chenile-others `docs/adr/0001-unified-chenile-events-and-scheduling.md`.
   - A **chenile-validation** framework is proposed (chenile-core `docs/adr/0001-chenile-validation.md`):
     - Jakarta Bean Validation plus external schemas;
     - defaults;

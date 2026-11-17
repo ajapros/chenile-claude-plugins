@@ -1,6 +1,6 @@
 ---
 name: "chenile-process-management"
-description: "Reference knowledge of Chenile Process Management — the splitter/aggregator (map-reduce) orchestrator on Chenile's STM. Covers modules (process-api, process-service, chenile-outbox, process-delegate, the invm/q-based/jdbc worker starters, trigger and crontab modules, process-admin-server, process-ui with its cron builder), the state machine, lifecycle, typed process work listeners routed by serviceSelector (2.1.35) and their failure semantics, the queue work envelope, process definitions, the always-on durable outbox (intentionally JDBC, not JPA) with its five command types, triggers on the outbox, ResponseHeadersAware, the three idempotency guards, the management API, the data model and Liquibase, the jgen-generated server/worker deployment, multi-tenancy, config, and the Temporal comparison. Use when building, explaining, extending, reviewing, operating, or integrating with Chenile process management."
+description: "Reference knowledge of Chenile Process Management — the splitter/aggregator (map-reduce) orchestrator on Chenile's STM. Covers modules (process-api, process-service, chenile-outbox, process-delegate, the invm/q-based/jdbc worker starters, trigger-service on chenile-trigger, schedules from chenile-scheduler(-db) (2.1.36), process-admin-server, process-ui with its Schedules tab and cron builder), the state machine, lifecycle, typed process work listeners routed by serviceSelector (2.1.35) and their failure semantics, the queue work envelope, process definitions, the always-on durable outbox (intentionally JDBC, not JPA) with its five command types, triggers on the outbox, ResponseHeadersAware, the three idempotency guards, the management API, the data model and Liquibase, the jgen-generated server/worker deployment, multi-tenancy, config, and the Temporal comparison. Use when building, explaining, extending, reviewing, operating, or integrating with Chenile process management."
 ---
 
 # Chenile Process Management
@@ -49,24 +49,26 @@ the `chenile-jgen` skill. State diagram: `docs/puml/process-states.mermaid`, mat
   There is no separate process-utils module.
 - **invm-process-starter / q-based-process-starter / jdbc-process-starter** — three interchangeable worker
   launch strategies (`WorkerStarter` impls).
-- **trigger-api** — trigger contracts/DTOs (`TriggerService`, `TriggerInput`, `TriggerResult`,
-  `TriggerStatus`). `TriggerService` = `trigger(TriggerInput)` + `status(String triggerId)`. (No
-  `TriggerObserver` — removed.) `TriggerResult` implements `ResponseHeadersAware` (header-aware response).
+- **Trigger contract (2.1.36: chenile-core's `chenile-trigger`, package `org.chenile.trigger`)** — `TriggerService`
+  = `trigger(TriggerInput)` + `status(String triggerId)`, with `TriggerInput`, `TriggerResult` (implements
+  `ResponseHeadersAware`), `TriggerStatus`, `TriggerHeaders`, `TriggerSources` and the shared input rules
+  (`TriggerRequests`). Its default `DirectTriggerService` (in memory) steps aside when `trigger-service` is present.
+  The old `trigger-api` module is removed. (No `TriggerObserver`.)
 - **trigger-service** — `EventTriggerService` + `DispatchTriggerCommand` + `TriggerController`. Triggers are
   durable `DISPATCH_TRIGGER` outbox commands; there is NO `trigger_log` table and no separate trigger store.
-- **crontab-api / crontab-service** (formerly one `crontab-trigger` module) — durable Quartz crontabs on
-  `chenile-scheduler`; `CrontabReader` with DB (`CrontabRepository`) and JSON (`JsonCrontabRepository`) backends,
-  plus `CrontabValidator`. `CrontabScheduler` fires `TriggerService.trigger(...)`.
-- **process-admin-server** — runnable Spring Boot host bundling controllers, trigger + crontab modules, the
+- **Schedules (2.1.36)** — chenile-others' `chenile-scheduler` (`SchedulerDefinition`, `ChenileScheduler`, JSON and
+  code) and `chenile-scheduler-db` (`SchedulerDefinitionEntity`, `ScheduleService`, `/schedule` REST). A fire calls
+  `TriggerService.trigger(...)`. `crontab-api` and `crontab-service` are removed; `chenile_crontab` is unused.
+- **process-admin-server** — runnable Spring Boot host bundling controllers, trigger-service + chenile-scheduler-db, the
   **in-VM** starter, the management API, and the scheduler. By design it ships no business workers (a
   `START_WORKER` no-ops, so a leaf sits in EXECUTING); it runs the engine/API/scheduler, and production
   deployments are generated with the `chenile-process-management` jgen blueprint (server + Kafka worker-listener
   + worker JARs). It depends on `invm-process-starter`, not `jdbc-process-starter`.
-- **process-ui** — React + Vite administrator console consuming the management API. The crontab form has a
+- **process-ui** — React + Vite administrator console consuming the management API. The Schedules tab's form has a
   Quartz cron-expression builder (interval / hourly / daily / weekdays / weekly / monthly → e.g.
   `0 0/5 * * * ?`, `0 30 9 ? * MON-FRI`); the generated expression stays editable.
 
-`trigger-service` and the crontab modules are optional in `process-service`; applications select them
+`trigger-service` and `chenile-scheduler-db` are optional in `process-service`; applications select them
 explicitly. There is no `chenile-logger` module.
 
 ## Domain model
@@ -109,7 +111,7 @@ only when the split is finalized **and** every child reported back.
 ## Lifecycle
 
 ```
-Trigger (crontab or any adapter)
+Trigger (a schedule, a file, or any adapter)
   -> TriggerService.trigger(TriggerInput)   [enqueues a durable DISPATCH_TRIGGER outbox command; commits
                                              acceptance in a REQUIRES_NEW tx, returns the outbox row id]
   -> outbox dispatcher later runs DispatchTriggerCommand.dispatch
@@ -159,7 +161,7 @@ Workers (typed listeners) autowire `ProcessManagerClient` and report back via
 Resolved via `IProcessConfigurator.findByName`; source chosen by `chenile.process.configurator` = `json`
 (default, `def.json`) or `database` (`process_definition` table). `ProcessConfigurator.read(stream,
 documentType)` supports a typed subclass of `Processes` with a `validate(...)` hook for extended definition
-documents. (jgen's process blueprint feeds this a native `processMap` spec plus a separate `cronSpec`.)
+documents. (jgen's process blueprint feeds this a native `processMap` spec plus a separate `scheduleSpec`.)
 `ProcessDefinitionService` (process-api; create/update/retrieve/findAll) is the edit path: it validates
 predecessor-chain and parent-hierarchy cycles and invalidates the configurator cache after commit; JSON-backed
 deployments are read-only. Definitions are **global** (keyed by process type, not tenant).
@@ -214,8 +216,8 @@ Durable delivery is at-least-once; correctness rests on three separate guards:
 1. **Enqueue de-duplication — outbox `idempotency_key` (unique).** Stops the same consequence being enqueued
    twice. **This is also the trigger idempotency guard** now that triggers are outbox commands: a trigger's
    key is `trigger:<id>` (unique, not deduped) when the caller gives no `idempotencyKey`, or
-   `trigger:<sha256(tenant, eventId, idempotencyKey)>` when they do; **cron** sets
-   `idempotencyKey = "crontab:<crontabId>:<quartzFireInstanceId>"`, so each fire instance is deduped here.
+   `trigger:<sha256(tenant, eventId, idempotencyKey)>` when they do; a **schedule** sets
+   `idempotencyKey = "schedule:<id>:<scheduledFireTime>"`, so a fire from several nodes is deduped here.
 2. **Claim-token fencing — `claim_token` + lease (`FOR UPDATE SKIP LOCKED`).** Exactly one winning claimant
    per attempt; a reclaimed row's loser cannot ack/fail/keep its effect.
 3. **Effect-level idempotency — `checkIdempotency(consumer, key)` against `chenile_process_receipt`.** THE
@@ -270,11 +272,13 @@ object owns its headers with no servlet dependency and the same contract works f
 points. Reach for it (instead of hand-building a `ResponseEntity`) whenever a Chenile response needs to carry
 HTTP headers such as `Location`, `ETag`, or `Content-Disposition`.
 
-`crontab-service` ships durable Quartz crontabs (`chenile_crontab`). `CrontabScheduler.fire` builds a
-`TriggerInput` with `idempotencyKey = "crontab:<id>:<fireInstanceId>"`, `eventId = crontab.eventName`,
-headers including `x-chenile-trigger-source=CRON`, `x-chenile-crontab-id`, Quartz fire details, and
-`payload = crontab.eventPayloadJson`. Schedules from DB or classpath JSON (`JsonCrontabRepository`), validated
-by `CrontabValidator`; Quartz syntax with seconds; single scheduler owner.
+Schedules (2.1.36) are chenile-others' `chenile-scheduler` + `chenile-scheduler-db` (table `chenile_schedule`).
+`ChenileScheduler.fire` builds a `TriggerInput` with source `CRON`, `idempotencyKey =
+"schedule:<id>:<scheduledFireTime>"`, `eventId = definition.eventId`, `payload = definition.payload`, and headers
+`x-chenile-schedule-id`, `x-chenile-scheduled-fire-time`, `x-chenile-fire-time`, tenant and the definition's x-
+headers. Quartz syntax with seconds; Spring Boot Quartz, in memory or clustered (JDBC job store, `clustered`
+profile in generated servers); the Quartz job holds only the schedule id and a stored schedule is re-read from the
+database on fire. File watch fires the same way with source `FILE`.
 
 ## Management API and admin console
 
@@ -282,15 +286,15 @@ Optional admin API at `/process-management/api` (`ProcessManagementController`, 
 `chenile.process.management.enabled=true`), plain JSON DTOs. Endpoints: `GET /info`; paginated
 `GET /processes` + `GET /processes/{id}` (returns `{ "process": ... }`); `GET /executions` — **trigger history
 as a filtered view of `DISPATCH_TRIGGER` outbox rows** (via `ProcessOutboxRepository.findCommands/findByIds`),
-filters `triggerId`, `crontabId` (from the command's context JSON), `status`, `page`, `size`, returns
-`TriggerStatus`; `GET`/`POST`/`PUT` `/crontabs`; `POST /triggers`; `GET`/`POST`/`PUT` `/definitions` +
+filters `triggerId`, `scheduleId` (the `x-chenile-schedule-id` header), `status`, `page`, `size`, returns
+`TriggerStatus`; `GET`/`POST`/`PUT` `/schedules` (saved through `ScheduleService`; `/info` reports `schedulesAvailable`); `POST /triggers`; `GET`/`POST`/`PUT` `/definitions` +
 `POST /definitions/refresh`; `GET /trace?processId=…|triggerId=…` (tenant-scoped causal graph,
 `PROCESS_CREATE`/`SUBPROCESS`/`SUCCESSOR` edges, refuses >1000 nodes with 413). Auth (`ManagementApiFilter`):
 `X-Process-Management-Key` (constant-time compare, ≥32 chars) + `x-chenile-tenant-id`; key administers ALL
 tenants; with `protect-all-http-routes=true` guards `/*`. `process-admin-server` packages this as a runnable
 host (fails fast without key/protection/PG outside `dev`; `ddl-auto=validate`, `sql.init.mode=never`; defaults
 DB configurator + in-VM worker delivery, ships no business workers; binds `127.0.0.1`). `process-ui` keeps the key in memory,
-behind a same-origin HTTPS proxy, and offers a Quartz cron builder on the crontab form. See `docs/process-management-ui.md`.
+behind a same-origin HTTPS proxy, and offers a Quartz cron builder on the Schedules form. See `docs/process-management-ui.md`.
 
 ## Multi-tenancy, completion, chaining
 
@@ -331,8 +335,9 @@ Reference DB: PostgreSQL.
   `updated_at`, `finished_at`, `error_message`. Indexes `(status, visible_after, locked_until)`, `(process_id)`.
 - `chenile_process_receipt` (SQL): effect-level idempotency ledger behind `checkIdempotency(consumer, key)`;
   PK `(consumer, receipt_key)`, `received_at`. Append-only; prune on a retention horizon.
-- `chenile_crontab` (entity `Crontab`): `name` UNIQUE, `enabled` (indexed), `cron_expression`, `timezone`,
-  `event_name`, `headers_json`, `event_payload_json` (+ base).
+- `chenile_schedule` (entity `SchedulerDefinitionEntity`, chenile-scheduler-db): `name` unique per tenant,
+  `cron_expression`, `timezone`, `event_id`, `payload`, `enabled`, `description` (+ base); headers in
+  `chenile_schedule_header`. Liquibase context `chenile-scheduler-db` (included by process-admin-server's master).
 
 **Removed tables**: `trigger_log` (triggers now live in `chenile_process_outbox` as `DISPATCH_TRIGGER`),
 `chenile_trigger_execution` (older), `chenile_process_completion_event` (completion derived from terminal
@@ -351,7 +356,7 @@ host includes `jdbc-process-starter`'s own `chenile-process-work.changelog.xml`)
 unless a host adds the dependency and sets `spring.liquibase.change-log` (+ contexts): `chenile-process-jdbc`
 (work, only for JDBC hosts), `chenile-process-outbox` (outbox + receipt), `chenile-process-history`
 (process_table indexes + drop retired completion table), `chenile-process-reference` (process_definition). Guarded preconditions (`onFail=MARK_RAN`). STM/base-entity
-tables (`process_table`, `subprocess_error`, `chenile_crontab`) are left to Hibernate or `liquibase diff`.
+tables (`process_table`, `subprocess_error`) are left to Hibernate or `liquibase diff`.
 (There is no longer a trigger_log changeset.)
 
 ## Deployment topology (server + worker mini monoliths)
@@ -359,7 +364,7 @@ tables (`process_table`, `subprocess_error`, `chenile_crontab`) are left to Hibe
 Production runs as ≥2 Chenile mini monoliths, scalable to more (`docs/deployment.md`):
 
 - **Process Manager Server** (the brain): packages `process-service`, the always-on `chenile-outbox`, one
-  `WorkerStarter` (preferably the **q-based** one), `trigger-service` + `crontab-service`, the management API /
+  `WorkerStarter` (preferably the **q-based** one), `trigger-service` + `chenile-scheduler-db`, the management API /
   UI. Owns the one PostgreSQL datasource and the outbox poller. Dispatches work; exposes `ProcessManager` over
   HTTP (Chenile service `processService`) for worker callbacks.
 - **Process Manager Worker** (the muscle): packages `process-delegate` (the `ProcessManagerClient` proxy +
@@ -484,7 +489,7 @@ trace graph). Anchor: Chenile ≈ Step Functions / transactional-outbox saga; Te
   `TriggerResult` → `Location`), so controllers don't hand-build `ResponseEntity` headers.
 - **No `trigger_log`, no `TriggerObserver`, no separate trigger table.** A trigger is a `DISPATCH_TRIGGER`
   outbox command (`process_id` null). Trigger idempotency IS the outbox `idempotency_key` guard
-  (`trigger:…` / `crontab:<id>:<fireInstanceId>`). `status`/`/executions` read `DISPATCH_TRIGGER` rows.
+  (`trigger:…`; schedules submit `schedule:<id>:<scheduledFireTime>`). `status`/`/executions` read `DISPATCH_TRIGGER` rows.
 - `TriggerService.trigger` commits durable acceptance in a REQUIRES_NEW tx and returns the outbox row id;
   execution is the dispatcher's job. `POST /trigger` → 202 + `Location /trigger/{id}`.
 - The three idempotency guards are distinct: outbox `idempotency_key` (enqueue de-dup, incl triggers),
