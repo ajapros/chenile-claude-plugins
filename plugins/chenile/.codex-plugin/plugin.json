@@ -1,6 +1,6 @@
 {
   "name": "chenile",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Skills for building with Chenile (chenile.org): framework knowledge and house rules, JGen code generation, architecture internals, process management, and the query/workflow runtime",
   "author": {
     "name": "Raja Shankar Kolluru",

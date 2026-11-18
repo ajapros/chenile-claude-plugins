@@ -1,6 +1,6 @@
 ---
 name: "chenile-framework-knowledge"
-description: "Reference knowledge of the Chenile Java/Spring microservices framework (chenile.org) and the Chenile house rules for writing Chenile code (cucumber tests always, reuse existing utilities, imports not FQCNs, @Configuration/@Bean instead of @Component, -api/-service split, follow JGen blueprint patterns, no single-use helper classes, avoid static methods, ask before adding abstraction layers, org.chenile.configuration.x for configuration and org.chenile.x for core classes). Covers concepts, exact REST/response contracts, headers, workflow (Finito STM) and query APIs, security, messaging, cconfig, registry/proxies, admin endpoints, service selection, and releases through 2.1.35 (2.1.36 in development). Use when writing or reviewing Chenile code, building a UI, client or integration against Chenile services, or explaining Chenile."
+description: "Reference knowledge of the Chenile Java/Spring microservices framework (chenile.org) and the Chenile house rules for writing Chenile code (cucumber tests always, reuse existing utilities, imports not FQCNs, @Configuration/@Bean instead of @Component, -api/-service split, follow JGen blueprint patterns, no single-use helper classes, avoid static methods, ask before adding abstraction layers, write for the human reader (no premature interfaces beyond -api contracts and framework extension points, shallow nesting, short traces), org.chenile.configuration.x for configuration and org.chenile.x for core classes). Covers concepts, exact REST/response contracts, headers, workflow (Finito STM) and query APIs, security, messaging, cconfig, registry/proxies, admin endpoints, service selection, and releases through 2.1.35 (2.1.36 in development). Use when writing or reviewing Chenile code, building a UI, client or integration against Chenile services, or explaining Chenile."
 ---
 
 
@@ -104,6 +104,16 @@ Related skills:
    - `org.chenile.x` holds its core classes (services, models, jobs, error codes).
 
    For a two-part name such as `scheduler-db`, use `org.chenile.configuration.scheduler.db` and `org.chenile.scheduler.db`. An application then needs to scan only `org.chenile.configuration` (`@SpringBootApplication(scanBasePackages = "org.chenile.configuration")`), and the core packages are never component-scanned. An auto-configuration also goes under `org.chenile.configuration.x`: list it in `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`, and `@SpringBootApplication`'s scan skips it, so its conditions still run after the application's beans.
+10. **Write for the human reader.** An agent pays nothing to add a layer; every person who reads the code afterwards pays for it. Alongside rules 7 and 8:
+   - **No premature interfaces.** Don't create an interface with a single implementation, or a factory for a single class, unless it marks a real boundary. Two boundaries are built into Chenile and are not exceptions to this rule:
+     - **The `<svc>-api` service interface** (rule 5). It has one implementation, but it is a published contract that other services and clients compile against.
+     - **Framework extension points.** Implementing `BaseTransitionAction` or another STM action, `BaseChenileInterceptor`, a `ServiceSelector` or body type selector, a health checker or a process work listener plugs into Chenile; it does not add a layer.
+
+     Any other new interface, base class or factory is a new layer, so rule 8 applies: ask first.
+   - **Deep methods over micro-methods.** Keep cohesive logic together and readable top to bottom. Don't split a 40-line method into six private one-liners the reader has to jump between. Extract a private method only when its name says something worth reading and it hides real detail.
+   - **Keep nesting shallow.** No more than two levels of nested conditionals or loops. Use guard clauses and early returns (or throw the right `ErrorNumException` subclass) to keep the happy path flat.
+   - **Keep the trace short.** A reader should get from an operation's entry point (the controller method or service definition) to its business logic in at most two hops through hand-written code. The interceptor pipeline and the wiring JGen generates don't count: keeping governance out of that trace is the point of Chenile.
+   - **Leave generated scaffolding alone.** These rules apply to the code you write. Don't restructure JGen output to satisfy them; if a blueprint's shape looks wrong, raise it as a blueprint change instead.
 
 ## 1. Model
 

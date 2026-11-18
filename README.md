@@ -23,6 +23,7 @@ contracts, house rules, architecture, and JGen blueprint guidance.
 - avoid static methods, except in general-purpose utilities such as `trim()` or `isBlank()`;
 - ask before adding extra layers of abstraction;
 - in a framework module `x`, put `@Configuration` classes in `org.chenile.configuration.x` and core classes in `org.chenile.x`.
+- write for the human reader: no single-implementation interfaces except the `-api` contract and framework extension points, no more than two levels of nesting, and at most two hand-written hops from entry point to business logic.
 
 ## Install
 
